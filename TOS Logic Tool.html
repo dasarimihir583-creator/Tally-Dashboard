@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GST Time of Supply Logic Engine</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; }
+        .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        select, input { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #3498db; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background-color: #2980b9; }
+        #result { margin-top: 25px; padding: 20px; border-radius: 5px; display: none; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info-box { font-size: 0.9em; background: #e8f4fd; padding: 10px; border-left: 4px solid #3498db; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Time of Supply Logic Engine</h1>
+    <p>Determine the point in time when the liability to pay GST arises [Section 12 & 13].</p>
+
+    <div class="section">
+        <label for="supplyType">1. Nature of Supply</label>
+        <select id="supplyType" onchange="toggleInputs()">
+            <option value="goods_forward">Goods (Forward Charge)</option>
+            <option value="goods_reverse">Goods (Reverse Charge)</option>
+            <option value="services_forward">Services (Forward Charge)</option>
+            <option value="services_reverse">Services (Reverse Charge)</option>
+            <option value="vouchers">Vouchers (Goods/Services)</option>
+        </select>
+    </div>
+
+    <div id="dynamicInputs">
+        <!-- Input fields will be toggled here by JavaScript -->
+    </div>
+
+    <button onclick="calculateTOS()">Determine Time of Supply</button>
+
+    <div id="result"></div>
+</div>
+
+<script>
+function toggleInputs() {
+    const type = document.getElementById('supplyType').value;
+    const container = document.getElementById('dynamicInputs');
+    let html = '';
+
+    if (type === 'goods_forward') {
+        html = `
+            <div class="info-box">Note: For goods under forward charge, GST is generally not payable on advances [Notif. 66/2017].</div>
+            <label>Date of Issue of Invoice:</label><input type="date" id="date_invoice" required>
+            <label>Last Date Invoice Ought to be Issued (u/s 31):</label><input type="date" id="date_invoice_due" required>
+        `;
+    } else if (type === 'goods_reverse') {
+        html = `
+            <label>Date of Receipt of Goods:</label><input type="date" id="date_receipt" required>
+            <label>Date of Payment (Book entry or Bank debit):</label><input type="date" id="date_payment" required>
+            <label>Date of Issue of Invoice by Supplier:</label><input type="date" id="date_invoice_supplier" required>
+        `;
+    } else if (type === 'services_forward') {
+        html = `
+            <label>Date of Provision of Service:</label><input type="date" id="date_provision" required>
+            <label>Date of Issue of Invoice:</label><input type="date" id="date_invoice" required>
+            <label>Date of Receipt of Payment (Book entry or Bank credit):</label><input type="date" id="date_payment" required>
+        `;
+    } else if (type === 'services_reverse') {
+        html = `
+            <label>Date of Payment (Book entry or Bank debit):</label><input type="date" id="date_payment" required>
+            <label>Date of Issue of Invoice by Supplier:</label><input type="date" id="date_invoice_supplier" required>
+        `;
+    } else if (type === 'vouchers') {
+        html = `
+            <label>Is the supply identifiable at the point of issue?</label>
+            <select id="vouch_identifiable"><option value="yes">Yes</option><option value="no">No</option></select>
+            <label>Date of Issue of Voucher:</label><input type="date" id="vouch_issue" required>
+            <label>Date of Redemption (if applicable):</label><input type="date" id="vouch_redemption">
+        `;
+    }
+    container.innerHTML = html;
+    document.getElementById('result').style.display = 'none'; // Hide result when switching types
+}
+
+function calculateTOS() {
+    const type = document.getElementById('supplyType').value;
+    const resultDiv = document.getElementById('result');
+    let tos = "";
+    let logic = "";
+    let isValid = true;
+
+    try {
+        if (type === 'goods_forward') {
+            const inv = new Date(document.getElementById('date_invoice').value);
+            const due = new Date(document.getElementById('date_invoice_due').value);
+            if (isNaN(inv) || isNaN(due)) throw "Please fill in all date fields.";
+            
+            const final = new Date(Math.min(inv, due));
+            tos = final.toDateString();
+            logic = "Earlier of Date of Invoice or Last Date when invoice ought to have been issued u/s 31. [Section 12(2)(a)]";
+        } 
+        else if (type === 'goods_reverse') {
+            const receipt = new Date(document.getElementById('date_receipt').value);
+            const pay = new Date(document.getElementById('date_payment').value);
+            const invSupp = new Date(document.getElementById('date_invoice_supplier').value);
+            if (isNaN(receipt) || isNaN(pay) || isNaN(invSupp)) throw "Please fill in all date fields.";
+            
+            const day31 = new Date(invSupp);
+            day31.setDate(day31.getDate() + 31);
+            
+            const final = new Date(Math.min(receipt, pay, day31));
+            tos = final.toDateString();
+            logic = "Earliest of: 1) Receipt of Goods, 2) Payment, or 3) 31st day from Supplier Invoice. [Section 12(3)]";
+        }
+        else if (type === 'services_forward') {
+            const prov = new Date(document.getElementById('date_provision').value);
+            const inv = new Date(document.getElementById('date_invoice').value);
+            const pay = new Date(document.getElementById('date_payment').value);
+            if (isNaN(prov) || isNaN(inv) || isNaN(pay)) throw "Please fill in all date fields.";
+            
+            const diffDays = Math.ceil(Math.abs(inv - prov) / (1000 * 60 * 60 * 24));
+            if (diffDays <= 30) {
+                tos = new Date(Math.min(inv, pay)).toDateString();
+                logic = "Invoice issued within 30 days. TOS is earlier of Invoice or Payment. [Section 13(2)(a)]";
+            } else {
+                tos = new Date(Math.min(prov, pay)).toDateString();
+                logic = "Invoice NOT issued within 30 days. TOS is earlier of Provision of Service or Payment. [Section 13(2)(b)]";
+            }
+        }
+        else if (type === 'services_reverse') {
+            const pay = new Date(document.getElementById('date_payment').value);
+            const invSupp = new Date(document.getElementById('date_invoice_supplier').value);
+            if (isNaN(pay) || isNaN(invSupp)) throw "Please fill in all date fields.";
+            
+            const day61 = new Date(invSupp);
+            day61.setDate(day61.getDate() + 61);
+            
+            const final = new Date(Math.min(pay, day61));
+            tos = final.toDateString();
+            logic = "Earlier of: 1) Date of Payment, or 2) 61st day from the date of issue of invoice by supplier. [Section 13(3)]";
+        }
+        else if (type === 'vouchers') {
+            const identifiable = document.getElementById('vouch_identifiable').value;
+            if (identifiable === 'yes') {
+                const issueDate = new Date(document.getElementById('vouch_issue').value);
+                if (isNaN(issueDate)) throw "Please enter the Date of Issue.";
+                tos = issueDate.toDateString();
+                logic = "Supply is identifiable at issue. TOS is Date of Issue. [Section 12(4)/13(4)]";
+            } else {
+                const redempDate = new Date(document.getElementById('vouch_redemption').value);
+                if (isNaN(redempDate)) throw "Please enter the Date of Redemption.";
+                tos = redempDate.toDateString();
+                logic = "Supply is NOT identifiable at issue. TOS is Date of Redemption. [Section 12(4)/13(4)]";
+            }
+        }
+
+        resultDiv.className = 'success';
+        resultDiv.innerHTML = `<strong>Result: Time of Supply is ${tos}</strong><br><small>Logic: ${logic}</small>`;
+        
+    } catch (err) {
+        resultDiv.className = 'error';
+        resultDiv.innerHTML = `<strong>Error:</strong> ${err}`;
+    }
+
+    resultDiv.style.display = 'block';
+}
+
+// Initialize inputs on load
+toggleInputs();
+</script>
+
+</body>
+</html>
