@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GST Place of Supply Logic Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        select, button { transition: all 0.2s; }
+    </style>
+</head>
+<body class="text-gray-800 min-h-screen flex flex-col items-center py-10 px-4">
+
+    <!-- Header -->
+    <div class="max-w-3xl w-full text-center mb-8 fade-in">
+        <div class="inline-block p-4 rounded-full bg-blue-100 text-blue-600 mb-4">
+            <i class="fa-solid fa-scale-balanced text-3xl"></i>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Place of Supply Engine</h1>
+        <p class="text-gray-600">Determine whether a transaction attracts IGST or CGST/SGST based on the IGST Act, 2017.</p>
+    </div>
+
+    <!-- Main Card -->
+    <div class="max-w-3xl w-full bg-white rounded-2xl shadow-xl overflow-hidden fade-in">
+        <div class="bg-blue-600 p-6 text-white flex justify-between items-center">
+            <h2 class="text-xl font-semibold"><i class="fa-solid fa-clipboard-question mr-2"></i> Transaction Details</h2>
+            <button id="resetBtn" class="text-blue-200 hover:text-white text-sm font-medium">
+                <i class="fa-solid fa-rotate-right mr-1"></i> Reset
+            </button>
+        </div>
+
+        <div class="p-6 md:p-8 space-y-6" id="questionnaire">
+            
+            <!-- Q1: Supplier Location -->
+            <div class="form-group">
+                <label class="block text-sm font-medium text-gray-700 mb-2">1. Location of Supplier (State/UT)</label>
+                <select id="supplierLoc" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="">-- Select Location --</option>
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+
+            <!-- Q2: Goods or Services -->
+            <div class="form-group hidden fade-in" id="q-supply-type">
+                <label class="block text-sm font-medium text-gray-700 mb-2">2. What is being supplied?</label>
+                <div class="grid grid-cols-2 gap-4">
+                    <button class="supply-type-btn border border-gray-300 rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 flex flex-col items-center justify-center gap-2" data-value="goods">
+                        <i class="fa-solid fa-box text-2xl text-blue-600"></i>
+                        <span class="font-medium">Goods</span>
+                    </button>
+                    <button class="supply-type-btn border border-gray-300 rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 flex flex-col items-center justify-center gap-2" data-value="services">
+                        <i class="fa-solid fa-handshake-angle text-2xl text-blue-600"></i>
+                        <span class="font-medium">Services</span>
+                    </button>
+                </div>
+                <input type="hidden" id="supplyType">
+            </div>
+
+            <!-- Q3: Goods Scenarios -->
+            <div class="form-group hidden fade-in" id="q-goods-scenario">
+                <label class="block text-sm font-medium text-gray-700 mb-2">3. Nature of Goods Transaction [Sec 10 & 11]</label>
+                <select id="goodsScenario" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">-- Select Scenario --</option>
+                    <option value="movement">Involves movement of goods (Sec 10(1)(a))</option>
+                    <option value="billToShipTo">Bill to Ship to model / Third party direction (Sec 10(1)(b))</option>
+                    <option value="noMovement">No movement of goods involved (Sec 10(1)(c))</option>
+                    <option value="installation">Goods installed or assembled at site (Sec 10(1)(d))</option>
+                    <option value="onBoard">Goods supplied on board a conveyance (Sec 10(1)(e))</option>
+                    <option value="import">Import of Goods into India (Sec 11(a))</option>
+                    <option value="export">Export of Goods outside India (Sec 11(b))</option>
+                </select>
+            </div>
+
+            <!-- Q3: Services Scenarios -->
+            <div class="form-group hidden fade-in" id="q-services-scenario">
+                <label class="block text-sm font-medium text-gray-700 mb-2">3. Category of Service [Sec 12]</label>
+                <select id="servicesScenario" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">-- Select Service Category --</option>
+                    <option value="general">General Rule (Other unspecified services) (Sec 12(2))</option>
+                    <option value="immovable">Directly in relation to Immovable Property / Hotel (Sec 12(3))</option>
+                    <option value="performance">Restaurant, Catering, Beauty, Fitness, Health (Sec 12(4))</option>
+                    <option value="training">Training and Performance Appraisal (Sec 12(5))</option>
+                    <option value="events">Organization of Events, Exhibitions (Sec 12(7))</option>
+                    <option value="transportGoods">Transportation of Goods / Courier (Sec 12(8))</option>
+                    <option value="transportPax">Passenger Transportation (Sec 12(9))</option>
+                </select>
+            </div>
+
+            <!-- Q4: Recipient Status (B2B / B2C) for Services -->
+            <div class="form-group hidden fade-in" id="q-b2b-b2c">
+                <label class="block text-sm font-medium text-gray-700 mb-2">4. Status of the Recipient</label>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="recipientStatus" value="b2b" class="w-4 h-4 text-blue-600 focus:ring-blue-500">
+                        <span>Registered (B2B)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="recipientStatus" value="b2c" class="w-4 h-4 text-blue-600 focus:ring-blue-500">
+                        <span>Unregistered (B2C)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Q5: Dynamic Location Question -->
+            <div class="form-group hidden fade-in" id="q-dynamic-location">
+                <label id="dynamicLocationLabel" class="block text-sm font-medium text-gray-700 mb-2">Select Location</label>
+                <select id="dynamicLoc" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">-- Select Location --</option>
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+
+            <!-- Calculate Button -->
+            <div class="hidden pt-4 fade-in" id="calculate-container">
+                <button id="calculateBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-gears"></i> Determine Tax Applicability
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Result Section -->
+        <div id="resultSection" class="hidden bg-gray-50 border-t border-gray-200 p-6 md:p-8 fade-in">
+            <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Determination Result</h3>
+            
+            <div class="grid md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                    <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1">Location of Supplier (LOS)</p>
+                    <p class="text-lg font-medium text-gray-900" id="res-los">-</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                    <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1">Place of Supply (POS)</p>
+                    <p class="text-lg font-medium text-gray-900" id="res-pos">-</p>
+                </div>
+            </div>
+
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg">
+                <p class="text-sm text-blue-800 font-semibold mb-1">Rule Applied:</p>
+                <p class="text-sm text-blue-900" id="res-rule">-</p>
+            </div>
+
+            <div class="text-center p-6 rounded-xl border-2 shadow-sm" id="res-tax-box">
+                <p class="text-sm font-semibold uppercase tracking-wider mb-2 opacity-80" id="res-tax-type-label">Applicable Tax</p>
+                <h2 class="text-3xl md:text-4xl font-extrabold" id="res-tax-result">-</h2>
+                <p class="mt-2 text-sm font-medium" id="res-tax-reason">-</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="mt-8 text-sm text-gray-500 text-center">
+        Disclaimer: This tool is for educational purposes based on general IGST Act rules and does not constitute professional tax advice.
+    </p>
+
+    <script>
+        // Data: States and UTs of India
+        const locations = [
+            "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", 
+            "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", 
+            "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", 
+            "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", 
+            "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+            "Andaman and Nicobar Islands", "Chandigarh", "Dadra & Nagar Haveli and Daman & Diu", 
+            "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+            "Outside India"
+        ];
+
+        // DOM Elements
+        const elSupplierLoc = document.getElementById('supplierLoc');
+        const elQSupplyType = document.getElementById('q-supply-type');
+        const elSupplyTypeBtns = document.querySelectorAll('.supply-type-btn');
+        const elSupplyTypeInput = document.getElementById('supplyType');
+        const elQGoodsScenario = document.getElementById('q-goods-scenario');
+        const elGoodsScenario = document.getElementById('goodsScenario');
+        const elQServicesScenario = document.getElementById('q-services-scenario');
+        const elServicesScenario = document.getElementById('servicesScenario');
+        const elQB2bB2c = document.getElementById('q-b2b-b2c');
+        const elRadioB2bB2c = document.getElementsByName('recipientStatus');
+        const elQDynamicLocation = document.getElementById('q-dynamic-location');
+        const elDynamicLocationLabel = document.getElementById('dynamicLocationLabel');
+        const elDynamicLoc = document.getElementById('dynamicLoc');
+        const elCalculateContainer = document.getElementById('calculate-container');
+        const elCalculateBtn = document.getElementById('calculateBtn');
+        const elResetBtn = document.getElementById('resetBtn');
+        const elResultSection = document.getElementById('resultSection');
+
+        // Populate Select Dropdowns
+        function populateDropdown(selectElement) {
+            locations.forEach(loc => {
+                const option = document.createElement('option');
+                option.value = loc;
+                option.textContent = loc;
+                selectElement.appendChild(option);
+            });
+        }
+        populateDropdown(elSupplierLoc);
+        populateDropdown(elDynamicLoc);
+
+        // State variables
+        let currentRule = "";
+
+        // Event Listeners for Flow Control
+        elSupplierLoc.addEventListener('change', (e) => {
+            if (e.target.value) {
+                elQSupplyType.classList.remove('hidden');
+            } else {
+                hideElements([elQSupplyType, elQGoodsScenario, elQServicesScenario, elQB2bB2c, elQDynamicLocation, elCalculateContainer, elResultSection]);
+                resetSupplyTypeButtons();
+            }
+            checkCompletion();
+        });
+
+        elSupplyTypeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // UI styling
+                elSupplyTypeBtns.forEach(b => {
+                    b.classList.remove('border-blue-600', 'bg-blue-50', 'ring-2', 'ring-blue-500');
+                    b.classList.add('border-gray-300');
+                });
+                const target = e.currentTarget;
+                target.classList.remove('border-gray-300');
+                target.classList.add('border-blue-600', 'bg-blue-50', 'ring-2', 'ring-blue-500');
+                
+                // Logic
+                const type = target.dataset.value;
+                elSupplyTypeInput.value = type;
+                
+                // Reset downstream
+                elGoodsScenario.value = "";
+                elServicesScenario.value = "";
+                elDynamicLoc.value = "";
+                Array.from(elRadioB2bB2c).forEach(r => r.checked = false);
+                hideElements([elQB2bB2c, elQDynamicLocation, elCalculateContainer, elResultSection]);
+
+                if (type === 'goods') {
+                    elQGoodsScenario.classList.remove('hidden');
+                    elQServicesScenario.classList.add('hidden');
+                } else {
+                    elQServicesScenario.classList.remove('hidden');
+                    elQGoodsScenario.classList.add('hidden');
+                }
+                checkCompletion();
+            });
+        });
+
+        // Goods Scenario Handler
+        elGoodsScenario.addEventListener('change', (e) => {
+            const scenario = e.target.value;
+            elDynamicLoc.value = "";
+            elResultSection.classList.add('hidden');
+
+            if (!scenario) {
+                elQDynamicLocation.classList.add('hidden');
+                elCalculateContainer.classList.add('hidden');
+                return;
+            }
+
+            elQDynamicLocation.classList.remove('hidden');
+            elCalculateContainer.classList.remove('hidden');
+
+            switch(scenario) {
+                case 'movement':
+                    elDynamicLocationLabel.textContent = "5. Location where movement terminates for delivery:";
+                    currentRule = "Section 10(1)(a): Place of supply is the location of goods at the time movement terminates for delivery to the recipient.";
+                    break;
+                case 'billToShipTo':
+                    elDynamicLocationLabel.textContent = "5. Principal's place of business (Third party who directed the movement):";
+                    currentRule = "Section 10(1)(b): Goods delivered on direction of a third person. POS is the principal place of business of such third person.";
+                    break;
+                case 'noMovement':
+                    elDynamicLocationLabel.textContent = "5. Location of goods at the time of delivery to recipient:";
+                    currentRule = "Section 10(1)(c): Where supply does not involve movement, POS is the location of goods at the time of delivery.";
+                    break;
+                case 'installation':
+                    elDynamicLocationLabel.textContent = "5. Place where goods are installed or assembled:";
+                    currentRule = "Section 10(1)(d): Where goods are assembled/installed at site, POS is the place of such installation/assembly.";
+                    break;
+                case 'onBoard':
+                    elDynamicLocationLabel.textContent = "5. Location where goods are taken on board the conveyance:";
+                    currentRule = "Section 10(1)(e): Goods supplied on board a conveyance. POS is the location where goods are taken on board.";
+                    break;
+                case 'import':
+                    elQDynamicLocation.classList.add('hidden');
+                    elDynamicLoc.value = "Outside India"; // Importer is in India, but to trigger IGST we handle logic in calculation
+                    elCalculateContainer.classList.remove('hidden');
+                    currentRule = "Section 11(a): Import of goods into India. Place of supply shall be the location of the importer. (Always treated as Inter-State / IGST).";
+                    break;
+                case 'export':
+                    elQDynamicLocation.classList.add('hidden');
+                    elDynamicLoc.value = "Outside India";
+                    elCalculateContainer.classList.remove('hidden');
+                    currentRule = "Section 11(b): Export of goods. Place of supply shall be the location outside India.";
+                    break;
+            }
+            checkCompletion();
+        });
+
+        // Services Scenario Handler
+        elServicesScenario.addEventListener('change', (e) => {
+            const scenario = e.target.value;
+            elDynamicLoc.value = "";
+            Array.from(elRadioB2bB2c).forEach(r => r.checked = false);
+            elResultSection.classList.add('hidden');
+            hideElements([elQB2bB2c, elQDynamicLocation, elCalculateContainer]);
+
+            if (!scenario) return;
+
+            // Some scenarios require B2B/B2C distinction
+            if (['general', 'training', 'events', 'transportGoods'].includes(scenario)) {
+                elQB2bB2c.classList.remove('hidden');
+            } else {
+                showServiceDynamicLocation(scenario, 'na');
+            }
+        });
+
+        // B2B / B2C Radio Handler
+        Array.from(elRadioB2bB2c).forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const status = e.target.value;
+                const scenario = elServicesScenario.value;
+                elDynamicLoc.value = "";
+                elResultSection.classList.add('hidden');
+                showServiceDynamicLocation(scenario, status);
+            });
+        });
+
+        function showServiceDynamicLocation(scenario, status) {
+            elQDynamicLocation.classList.remove('hidden');
+            elCalculateContainer.classList.remove('hidden');
+
+            if (scenario === 'general') {
+                if (status === 'b2b') {
+                    elDynamicLocationLabel.textContent = "5. Location of the Registered Recipient:";
+                    currentRule = "Section 12(2)(a): General rule for B2B. Place of supply is the location of such registered person.";
+                } else {
+                    elDynamicLocationLabel.textContent = "5. Location of Recipient (if address on record exists, else select Supplier's Location):";
+                    currentRule = "Section 12(2)(b): General rule for B2C. Place of supply is location of recipient if address on record exists, otherwise location of supplier.";
+                }
+            } 
+            else if (scenario === 'immovable') {
+                elDynamicLocationLabel.textContent = "4. Location where the immovable property/boat/vessel is located or intended to be located:";
+                currentRule = "Section 12(3): Services directly in relation to immovable property (incl. accommodation). POS is where the property is located.";
+            }
+            else if (scenario === 'performance') {
+                elDynamicLocationLabel.textContent = "4. Location where the services are actually performed:";
+                currentRule = "Section 12(4): Restaurant, catering, personal grooming, fitness, beauty. POS is the location where services are actually performed.";
+            }
+            else if (scenario === 'training') {
+                if (status === 'b2b') {
+                    elDynamicLocationLabel.textContent = "5. Location of the Registered Recipient:";
+                    currentRule = "Section 12(5)(a): Training/Performance Appraisal to registered person. POS is location of such registered person.";
+                } else {
+                    elDynamicLocationLabel.textContent = "5. Location where the services are actually performed:";
+                    currentRule = "Section 12(5)(b): Training to unregistered person. POS is where the services are actually performed.";
+                }
+            }
+            else if (scenario === 'events') {
+                if (status === 'b2b') {
+                    elDynamicLocationLabel.textContent = "5. Location of the Registered Recipient:";
+                    currentRule = "Section 12(7)(a)(i): Organization of event for registered person. POS is location of such person.";
+                } else {
+                    elDynamicLocationLabel.textContent = "5. Location where the event is actually held:";
+                    currentRule = "Section 12(7)(a)(ii): Organization of event for unregistered person. POS is where the event is actually held.";
+                }
+            }
+            else if (scenario === 'transportGoods') {
+                if (status === 'b2b') {
+                    elDynamicLocationLabel.textContent = "5. Location of the Registered Recipient:";
+                    currentRule = "Section 12(8)(a): Transportation of goods for registered person. POS is location of such person.";
+                } else {
+                    elDynamicLocationLabel.textContent = "5. Location where goods are handed over for their transportation:";
+                    currentRule = "Section 12(8)(b): Transportation of goods for unregistered person. POS is where goods are handed over.";
+                }
+            }
+            else if (scenario === 'transportPax') {
+                elDynamicLocationLabel.textContent = "4. Place where the passenger embarks on the conveyance for continuous journey:";
+                currentRule = "Section 12(9): Passenger transportation service. POS is the place where passenger embarks.";
+            }
+        }
+
+        // Handle dynamically checking if Calculate button should be enabled
+        elDynamicLoc.addEventListener('change', checkCompletion);
+
+        function checkCompletion() {
+            elResultSection.classList.add('hidden');
+        }
+
+        function hideElements(elements) {
+            elements.forEach(el => el.classList.add('hidden'));
+        }
+
+        function resetSupplyTypeButtons() {
+            elSupplyTypeBtns.forEach(b => {
+                b.classList.remove('border-blue-600', 'bg-blue-50', 'ring-2', 'ring-blue-500');
+                b.classList.add('border-gray-300');
+            });
+            elSupplyTypeInput.value = "";
+        }
+
+        // Calculate Logic
+        elCalculateBtn.addEventListener('click', () => {
+            const los = elSupplierLoc.value;
+            const supplyType = elSupplyTypeInput.value;
+            
+            if (!los) return alert("Please select Location of Supplier.");
+            if (!supplyType) return alert("Please select Goods or Services.");
+
+            let pos = elDynamicLoc.value;
+            
+            // Overrides for specific cases
+            if (supplyType === 'goods') {
+                const goodsScen = elGoodsScenario.value;
+                if (goodsScen === 'import') {
+                    pos = 'India (Import)'; 
+                } else if (goodsScen === 'export') {
+                    pos = 'Outside India';
+                }
+                if (!goodsScen) return alert("Please select Goods Scenario.");
+                if (goodsScen !== 'import' && goodsScen !== 'export' && !pos) return alert("Please select POS Location.");
+            } else {
+                const srvScen = elServicesScenario.value;
+                if (!srvScen) return alert("Please select Services Category.");
+                if (['general', 'training', 'events', 'transportGoods'].includes(srvScen)) {
+                    let checked = false;
+                    elRadioB2bB2c.forEach(r => { if(r.checked) checked = true; });
+                    if(!checked) return alert("Please select Recipient Status.");
+                }
+                if (!pos) return alert("Please select POS Location.");
+            }
+
+            // Calculation Engine
+            let isInterState = false;
+            let taxType = "";
+            let reason = "";
+
+            if (los === "Outside India" || pos === "Outside India" || pos === "India (Import)") {
+                isInterState = true; // Import/Export scenarios automatically attract IGST
+                taxType = "IGST";
+                reason = "Cross-border transaction. Supply involves territory outside India.";
+            } else if (los !== pos) {
+                isInterState = true;
+                taxType = "IGST";
+                reason = "Inter-State Supply. Location of Supplier and Place of Supply are in DIFFERENT States/UTs.";
+            } else {
+                isInterState = false;
+                taxType = "CGST + SGST/UTGST";
+                reason = "Intra-State Supply. Location of Supplier and Place of Supply are in the SAME State/UT.";
+            }
+
+            // Render Result
+            document.getElementById('res-los').textContent = los;
+            document.getElementById('res-pos').textContent = pos;
+            document.getElementById('res-rule').textContent = currentRule;
+            
+            const taxBox = document.getElementById('res-tax-box');
+            const taxResult = document.getElementById('res-tax-result');
+            const taxReason = document.getElementById('res-tax-reason');
+
+            taxResult.textContent = taxType;
+            taxReason.textContent = reason;
+
+            taxBox.className = "text-center p-6 rounded-xl border-2 shadow-sm fade-in ";
+            if (isInterState) {
+                taxBox.classList.add('bg-purple-50', 'border-purple-200', 'text-purple-800');
+            } else {
+                taxBox.classList.add('bg-green-50', 'border-green-200', 'text-green-800');
+            }
+
+            elResultSection.classList.remove('hidden');
+            
+            // Scroll to result
+            setTimeout(() => {
+                elResultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        });
+
+        // Reset Button
+        elResetBtn.addEventListener('click', () => {
+            elSupplierLoc.value = "";
+            resetSupplyTypeButtons();
+            elGoodsScenario.value = "";
+            elServicesScenario.value = "";
+            elDynamicLoc.value = "";
+            Array.from(elRadioB2bB2c).forEach(r => r.checked = false);
+            hideElements([elQSupplyType, elQGoodsScenario, elQServicesScenario, elQB2bB2c, elQDynamicLocation, elCalculateContainer, elResultSection]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+    </script>
+</body>
+</html>
